@@ -1,5 +1,5 @@
 <template>
-    <div :class="$style.list">
+    <div :class="$style.list" :style="{ paddingRight: gaps[1] + 'px' }">
         <div :class="$style.item" v-for="(item, idx) in data" :key="item.key">
             <slot :item="item" :index="idx" :height="rowHeight" :width="rowHeight" />
         </div>
@@ -17,6 +17,11 @@ export default defineComponent({
             type: Array as PropType<Item[]>,
             required: true,
         },
+        // 边距
+        gap: {
+            type: [Number, Array] as PropType<number[] | number>,
+            default: 10,
+        },
         rowHeight: {
             type: [Number, String],
             default: 24,
@@ -27,6 +32,9 @@ export default defineComponent({
         },
     },
     computed: {
+        gaps() {
+            return typeof this.gap === 'number' ? [this.gap, this.gap] : this.gap;
+        },
         renderData() {
             return this.data.map((item) => {
                 const tmp = { ...item };

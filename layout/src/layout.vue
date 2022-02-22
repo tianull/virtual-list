@@ -5,12 +5,17 @@
             v-bind="$attrs"
             :clientWidth="clientWidth"
             :clientHeight="clientHeight"
+            @scroll="handleScroll"
+            @loadMore="loadMore"
         >
             <template #default="{ item, index, width, height }">
                 <!--
                     @slot 自定义内容区域，抛出{ item, index, width, height }
                 -->
                 <slot :item="item" :index="index" :width="width" :height="height" />
+            </template>
+            <template #other>
+                <slot name="other" />
             </template>
         </component>
     </div>
@@ -61,6 +66,7 @@ export default defineComponent({
             default: false,
         },
     },
+    emits: ['loadMore', 'scroll'],
     data(): {
         clientWidth: number;
         clientHeight: number;
@@ -68,7 +74,7 @@ export default defineComponent({
     } {
         return {
             clientWidth: 0,
-            clientHeight: document.body.clientHeight,
+            clientHeight: 0,
             observer: null,
         };
     },
@@ -82,21 +88,33 @@ export default defineComponent({
     mounted() {
         this.$nextTick(() => {
             this.clientWidth = this.$el.clientWidth;
+            this.clientHeight = document.body.clientHeight;
             // 初始化observer
-            this.initResize();
+            this.initResizeObserver();
+            window.addEventListener('resize', this.getClientHeight);
         });
     },
     beforeUnmount() {
         this.observer?.disconnect();
+        window.removeEventListener('resize', this.getClientHeight);
     },
     methods: {
-        initResize() {
+        getClientHeight() {
+            this.clientHeight = document.body.clientHeight;
+        },
+        initResizeObserver() {
             this.observer = new ResizeObserver((mutations) => {
                 setTimeout(() => {
                     this.clientWidth = (mutations[0]?.target as HTMLElement).clientWidth;
                 }, 20);
             });
             this.observer.observe(this.$el);
+        },
+        handleScroll(data: any) {
+            this.$emit('scroll', data);
+        },
+        loadMore() {
+            this.$emit('loadMore');
         },
     },
 });

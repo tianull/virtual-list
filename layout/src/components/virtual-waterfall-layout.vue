@@ -1,38 +1,47 @@
 <template>
-    <div :class="$style.waterfall">
-        <VirtualLayoutWF
-            v-if="collection.length"
-            :width="clientWidth + 14"
-            :height="clientHeight"
-            :collection="collection"
-            :cellSizeAndPositionGetter="cellSizeAndPositionGetter"
-        >
-            <template #cell="{ item }">
-                <!--
+    <VirtualLayoutWF
+        v-if="collection.length"
+        :width="clientWidth"
+        :height="clientHeight"
+        :collection="collection"
+        :cellSizeAndPositionGetter="cellSizeAndPositionGetter"
+        :otherSlotHeight="otherSlotHeight"
+        :fixedHeight="fixedHeight"
+        @scroll="handleScroll"
+        @loadMore="loadMore"
+    >
+        <template #other>
+            <slot name="other" />
+        </template>
+        <template #cell="{ item }">
+            <!--
                     @slot 自定义内容区域，抛出{ item, index, width, height }
                 -->
-                <slot
-                    :item="item"
-                    :index="item._index"
-                    :width="actualWidth"
-                    :height="item._height"
-                />
-            </template>
-        </VirtualLayoutWF>
-    </div>
+            <slot :item="item" :index="item._index" :width="actualWidth" :height="item._height" />
+        </template>
+        <template #bottom>
+            <Spin v-show="loading" />
+        </template>
+    </VirtualLayoutWF>
 </template>
 <script lang="ts">
 import { defineComponent, PropType } from 'vue-demi';
 import { get } from '../../utils';
 import { CollectionItem, IColumns, Item } from '../types';
 import VirtualLayoutWF from './virtual-layout-wf.vue';
+import Spin from './spin.vue';
 
 export default defineComponent({
     name: 'Waterfall',
     components: {
         VirtualLayoutWF,
+        Spin,
     },
     props: {
+        loading: {
+            type: Boolean,
+            default: false,
+        },
         data: {
             type: Array as PropType<Item[]>,
             required: true,
@@ -70,7 +79,17 @@ export default defineComponent({
             type: Number,
             default: 3,
         },
+        otherSlotHeight: {
+            type: Number,
+            default: 0,
+        },
+        // 页面非滚动区域所占高度（搜索+筛选+padding)
+        fixedHeight: {
+            type: Number,
+            default: 200,
+        },
     },
+    emits: ['scroll', 'loadMore'],
     data(): {
         columnItems: IColumns[];
         collection: CollectionItem[];
@@ -86,10 +105,7 @@ export default defineComponent({
         },
         actualWidth() {
             if (this.clientWidth === 0) return 0;
-            const PADDING = 5;
-            return Math.round(
-                (this.clientWidth - PADDING * 2 - (this.columns - 1) * this.gaps[0]) / this.columns,
-            );
+            return Math.round((this.clientWidth - this.columns * this.gaps[0]) / this.columns);
         },
     },
     watch: {
@@ -97,6 +113,9 @@ export default defineComponent({
             this.refreshColumns();
         },
         data() {
+            this.refreshColumns();
+        },
+        extraHeight() {
             this.refreshColumns();
         },
     },
@@ -108,6 +127,12 @@ export default defineComponent({
         });
     },
     methods: {
+        handleScroll(data: any) {
+            this.$emit('scroll', data);
+        },
+        loadMore() {
+            this.$emit('loadMore');
+        },
         reset() {
             this.columnItems = [];
             this.collection = [];
@@ -123,6 +148,7 @@ export default defineComponent({
         },
         handleColumnData(data: Item[], columns: IColumns[], lastIndex?: number) {
             if (!data) return;
+            // 似乎可以用ServiceWorker?
             data.forEach((item, i) => {
                 const height = this.getItemSize(item);
                 // 图片高度+每张图片margin
@@ -189,8 +215,3 @@ export default defineComponent({
     },
 });
 </script>
-<style lang="less" module>
-.waterfall {
-    transition: all 0.15s;
-}
-</style>

@@ -271,7 +271,7 @@ const Template = (args) => ({
             :value="args.scale"
             @change="handleChange"
         />
-        <DLayout :data="args.data" :layoutMode="args.layoutMode" :gap="[20, 24]" :columns="columns">
+        <DLayout :data="args.data" virtual :loading="true" :layoutMode="args.layoutMode" :gap="[20, 24]" :columns="columns">
             <template #default="{ item, index, width, height }">
                 <div class="grid-item" :data-index="index">
                     <img :style="{ width: width + 'px', height: height + 'px' }" :src="item.src" alt="" />
@@ -420,7 +420,7 @@ const Template3 = (args) => ({
             :value="args.scale"
             @change="handleChange"
         />
-        <DLayout :data="args.data" :layoutMode="args.layoutMode" :rowHeight="rowHeight">
+        <DLayout :data="args.data" virtual :loading="true" :layoutMode="args.layoutMode" :rowHeight="rowHeight">
             <template #default="{ item, index, height }">
                 <div class="list-content" style="display: flex;flex-direction: row;align-items: center;">
                     <div :style="itemStyle(item, height)" ></div>

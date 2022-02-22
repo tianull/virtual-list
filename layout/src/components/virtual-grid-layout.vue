@@ -1,33 +1,47 @@
 <template>
-    <div :class="$style.grid">
-        <VirtualLayoutWF
-            v-if="renderData.length"
-            :width="clientWidth + 14"
-            :height="clientHeight"
-            :collection="renderData"
-            :cellSizeAndPositionGetter="cellSizeAndPositionGetter"
-        >
-            <template #cell="{ item }">
-                <!--
-                    @slot 自定义内容区域，抛出{ item, index, width, height }
-                -->
-                <slot :item="item" :index="item._index" :width="maxWidth" :height="maxWidth" />
-            </template>
-        </VirtualLayoutWF>
-    </div>
+    <VirtualLayoutWF
+        v-if="renderData.length"
+        :width="clientWidth"
+        :height="clientHeight"
+        :collection="renderData"
+        :cellSizeAndPositionGetter="cellSizeAndPositionGetter"
+        :otherSlotHeight="otherSlotHeight"
+        :fixedHeight="fixedHeight"
+        @scroll="handleScroll"
+        @loadMore="loadMore"
+    >
+        <template #other>
+            <slot name="other" />
+        </template>
+        <template #cell="{ item }">
+            <!--
+                @slot 自定义内容区域，抛出{ item, index, width, height }
+            -->
+            <slot :item="item" :index="item._index" :width="maxWidth" :height="maxWidth" />
+        </template>
+        <template #bottom>
+            <Spin v-show="loading" />
+        </template>
+    </VirtualLayoutWF>
 </template>
 <script lang="ts">
 import { defineComponent, PropType } from 'vue-demi';
 import { CollectionItem, Item } from '../types';
 import { get } from '../../utils';
 import VirtualLayoutWF from './virtual-layout-wf.vue';
+import Spin from './spin.vue';
 
 export default defineComponent({
     name: 'VirtualGrid',
     components: {
         VirtualLayoutWF,
+        Spin,
     },
     props: {
+        loading: {
+            type: Boolean,
+            default: false,
+        },
         data: {
             type: Array as PropType<Item[]>,
             required: true,
@@ -57,16 +71,23 @@ export default defineComponent({
             type: Number,
             default: 30,
         },
+        otherSlotHeight: {
+            type: Number,
+            default: 0,
+        },
+        // 页面非滚动区域所占高度（搜索+筛选+padding)
+        fixedHeight: {
+            type: Number,
+            default: 200,
+        },
     },
+    emits: ['loadMore', 'scroll'],
     computed: {
         gaps() {
             return typeof this.gap === 'number' ? [this.gap, this.gap] : this.gap;
         },
         maxWidth() {
-            const PADDING = 5;
-            return Math.floor(
-                (this.clientWidth - PADDING * 2 - (this.columns - 1) * this.gaps[0]) / this.columns,
-            );
+            return Math.floor((this.clientWidth - this.columns * this.gaps[0]) / this.columns);
         },
         renderData() {
             if (this.maxWidth <= 0) return [];
@@ -94,11 +115,12 @@ export default defineComponent({
                 y: item.y,
             };
         },
+        handleScroll(data: any) {
+            this.$emit('scroll', data);
+        },
+        loadMore() {
+            this.$emit('loadMore');
+        },
     },
 });
 </script>
-<style lang="less" module>
-.grid {
-    transition: all 0.15s;
-}
-</style>

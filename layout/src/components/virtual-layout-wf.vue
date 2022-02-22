@@ -1,6 +1,7 @@
 <template>
     <div :class="$style.virtual" :style="outerStyle" @scroll.passive="onScroll" ref="outer">
-        <div :class="$style.container" :style="containerStyle">
+        <slot name="other" />
+        <div :class="$style.container" ref="inner" :style="containerStyle">
             <div
                 :class="$style['cell-container']"
                 v-for="item in displayItems"
@@ -10,6 +11,7 @@
                 <slot name="cell" :item="item.data" />
             </div>
         </div>
+        <slot name="bottom" />
     </div>
 </template>
 <script>
@@ -38,26 +40,42 @@ export default defineComponent({
         // 每个区域框大小
         sectionSize: {
             type: Number,
-            default: 500,
+            default: 300,
+        },
+        // 加载更多 触底距离
+        preloadDistance: {
+            type: [Number, String],
+            required: false,
+            default: 50,
+        },
+        otherSlotHeight: {
+            type: Number,
+            default: 0,
+        },
+        // 页面非滚动区域所占高度（搜索+筛选+padding)
+        fixedHeight: {
+            type: Number,
+            default: 200,
         },
     },
+    emits: ['loadMore', 'scroll'],
     data() {
         return {
             totalHeight: 0,
             displayItems: [],
+            slotHeight: 0,
         };
     },
     computed: {
         outerStyle() {
             return {
-                height:
-                    this.height > this.totalHeight ? this.totalHeight + 'px' : this.height + 'px',
+                height: this.height + 'px',
                 width: this.width + 'px',
             };
         },
         containerStyle() {
             return {
-                height: this.totalHeight + 'px',
+                height: this.totalHeight + this.fixedHeight + 'px',
                 width: '100%',
             };
         },
@@ -66,10 +84,21 @@ export default defineComponent({
         collection() {
             this.refreshCollection();
         },
+        otherSlotHeight() {
+            this.slotHeight = this.otherSlotHeight + this.$refs.outer?.scrollTop;
+        },
     },
     created() {
         this.groupManagers = [];
         this.onCollectionChanged();
+    },
+    mounted() {
+        this.$nextTick(() => {
+            this.slotHeight = this.otherSlotHeight + this.$refs.outer?.scrollTop;
+            setTimeout(() => {
+                this.onScroll();
+            }, 300);
+        });
     },
     methods: {
         getComputedStyle(item) {
@@ -92,7 +121,7 @@ export default defineComponent({
         },
         refreshCollection() {
             // Dispose previous groups and reset associated data
-            this.groupManagers.forEach((manager) => manager.dispose());
+            // this.groupManagers.forEach((manager) => manager.dispose());
             this.groupManagers = [];
             this.totalHeight = 0;
 
@@ -109,11 +138,11 @@ export default defineComponent({
             // Create and store managers for each item group
             collection.forEach((groupContainer, i) => {
                 const groupIndex = i; // Capture group index for closure
-                const unwatch = this.$watch(
-                    () => groupContainer,
-                    () => this.onGroupChanged(groupContainer.group, groupIndex),
-                    { deep: true },
-                );
+                // const unwatch = this.$watch(
+                //     () => groupContainer,
+                //     () => this.onGroupChanged(groupContainer.group, groupIndex),
+                //     { deep: true },
+                // );
 
                 this.groupManagers.push(
                     new GroupManager(
@@ -121,7 +150,7 @@ export default defineComponent({
                         groupIndex,
                         this.sectionSize,
                         this.cellSizeAndPositionGetter,
-                        unwatch,
+                        // unwatch,
                     ),
                 );
             });
@@ -140,12 +169,24 @@ export default defineComponent({
         },
         onScroll() {
             this.flushDisplayItems();
+            const outerEl = this.$refs.outer;
+            const scrollTop = outerEl.scrollTop;
+            this.$nextTick(() => {
+                this.$emit('scroll', { scrollTop: scrollTop || 0 });
+                if (
+                    scrollTop + outerEl.clientHeight >=
+                    outerEl.scrollHeight - Number(this.preloadDistance)
+                ) {
+                    console.log('load-more');
+                    this.$emit('loadMore');
+                }
+            });
         },
         flushDisplayItems() {
             let scrollTop = 0;
             const scrollLeft = 0;
             if (this.$refs.outer) {
-                scrollTop = this.$refs.outer.scrollTop;
+                scrollTop = this.$refs.outer.scrollTop - this.slotHeight;
             }
 
             const displayItems = [];
@@ -184,11 +225,10 @@ export default defineComponent({
 </script>
 <style lang="less" module>
 .virtual {
-    overflow: auto;
     -webkit-overflow-scrolling: touch;
     width: 100%;
-    padding: 5px;
-    transition: all 0.15s;
+    padding: 2px;
+    // transition: all 0.15s;
     .container {
         position: relative;
     }
@@ -196,6 +236,40 @@ export default defineComponent({
         position: absolute;
         top: 0;
         left: 0;
+    }
+
+    overflow: auto;
+    overflow: overlay;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+
+    &:hover::-webkit-scrollbar {
+        display: block;
+        width: 4px;
+
+        &-thumb {
+            height: 53px;
+            background: #d6d7d8;
+            border-radius: 29px;
+
+            &:hover {
+                background: #adafb2;
+            }
+        }
+
+        &-track {
+            display: none;
+        }
+
+        &-corner {
+            display: none;
+        }
+
+        &-button {
+            display: none;
+        }
     }
 }
 </style>

@@ -1,6 +1,7 @@
 <template>
-    <div :class="$style['virtual-list']" ref="virtualList" @scroll.passive="onScroll">
-        <div class="virtual-scroll-bar" ref="scrollBar"></div>
+    <div :class="$style['virtual-list']" ref="virtualList" @scroll.passive="handleScroll">
+        <slot name="other" />
+        <div class="virtual-scroll-bar" ref="scrollBar" :style="{ height: scrollBarHeight }"></div>
         <div :class="$style['scroll-list']" ref="scroll-list" :style="transform">
             <div
                 ref="nodes"
@@ -12,6 +13,7 @@
                 <slot :item="item" :idx="index" />
             </div>
         </div>
+        <slot name="bottom" />
     </div>
 </template>
 <script lang="ts">
@@ -33,6 +35,7 @@ interface IData {
     offset: number;
     scrollTop: number;
     variableData: IList[];
+    slotHeight: number;
 }
 
 export default defineComponent({
@@ -58,7 +61,7 @@ export default defineComponent({
         virtualHeight: {
             type: [Number, String],
             require: true,
-            default: '100%',
+            default: '100vh',
         },
         /** 每屏可见数据条数 */
         remain: {
@@ -71,11 +74,32 @@ export default defineComponent({
             require: true,
             default: '',
         },
+        gaps: {
+            type: Array as PropType<number[]>,
+            default: () => [],
+        },
         interval: {
             type: [Number, String],
             default: 0,
         },
+        // 加载更多 触底距离
+        preloadDistance: {
+            type: [Number, String],
+            required: false,
+            default: 50,
+        },
+        // 容器距离屏幕左上角固定高度
+        topFixedHeight: {
+            type: Number,
+            default: 0,
+        },
+        // 滚动列表顶部slot高度
+        otherSlotHeight: {
+            type: Number,
+            default: 0,
+        },
     },
+    emits: ['loadMore', 'scroll'],
     data(): IData {
         return {
             startIndex: 0,
@@ -83,11 +107,16 @@ export default defineComponent({
             offset: 0,
             scrollTop: 0,
             variableData: [],
+            slotHeight: 0,
         };
     },
     computed: {
         transform() {
+            // FIXME: 内容标签高度，应外部传入
+            const toggleHeight = 28;
             return {
+                paddingRight: this.gaps[1] + 'px',
+                marginTop: this.otherHeight + toggleHeight + 'px',
                 transform: `translateY(${this.offset}px)`,
             };
         },
@@ -109,48 +138,45 @@ export default defineComponent({
                 this.endIndex + this.nextCount,
             );
         },
+        // 滚动列表距离滚动区域顶部的高度
+        otherHeight() {
+            return Math.round(this.slotHeight - this.topFixedHeight);
+        },
+        actualSize() {
+            return Number(this.size) + this.gaps[0] * 2;
+        },
+        scrollBarHeight() {
+            return (this.data.length + 5) * this.actualSize + 'px';
+        },
     },
     watch: {
         data(newData) {
-            if (this.type === TYPE.FIXED) {
-                (this.$refs.scrollBar as HTMLElement).style.height =
-                    newData.length * Number(this.size) + 'px';
-            } else {
+            if (this.type === TYPE.VARIABLE) {
                 this.variableData = this.getVisiblePosition(newData);
             }
         },
         size() {
-            (this.$refs.scrollBar as HTMLElement).style.height =
-                this.data.length * Number(this.size) + 'px';
-
-            const minListHeight = Math.min(Number(this.remain), this.data.length);
             if (this.type === TYPE.VARIABLE) {
                 this.variableData = this.getVisiblePosition(this.data);
-                (this.$refs.virtualList as HTMLElement).style.height = this.outerHeight;
-            } else {
-                (this.$refs.virtualList as HTMLElement).style.height =
-                    minListHeight * Number(this.size) + 'px';
             }
+            (this.$refs.virtualList as HTMLElement).style.height = this.outerHeight;
+        },
+        otherSlotHeight() {
+            const virtualListEl = this.$refs.virtualList as HTMLElement;
+            this.slotHeight = this.otherSlotHeight + virtualListEl?.scrollTop;
         },
     },
     mounted() {
-        if (!this.size) {
-            throw new Error('请传入size属性');
-        }
-        (this.$refs.scrollBar as HTMLElement).style.height =
-            this.data.length * Number(this.size) + 'px';
-        this.endIndex = this.startIndex + Number(this.remain);
-
-        const minListHeight = Math.min(Number(this.remain), this.data.length);
-        if (this.type === TYPE.VARIABLE) {
-            this.variableData = this.getVisiblePosition(this.data);
-            (this.$refs.virtualList as HTMLElement).style.height = this.outerHeight;
-        } else {
-            (this.$refs.virtualList as HTMLElement).style.height =
-                minListHeight * Number(this.size) + 'px';
-        }
-
-        this.onScroll = this._throttle(this.handleScroll, Number(this.interval));
+        this.$nextTick(() => {
+            this.endIndex = this.startIndex + Number(this.remain);
+            if (!this.actualSize) return;
+            if (this.type === TYPE.VARIABLE) {
+                this.variableData = this.getVisiblePosition(this.data);
+            }
+            const virtualListEl = this.$refs.virtualList as HTMLElement;
+            virtualListEl.style.height = this.outerHeight;
+            this.slotHeight = this.otherSlotHeight + virtualListEl?.scrollTop;
+        });
     },
     updated() {
         this.$nextTick(() => {
@@ -178,39 +204,40 @@ export default defineComponent({
         });
     },
     methods: {
-        _throttle(fn: Function, delay: number): Function {
-            let isRunning = false;
-            return () => {
-                if (isRunning) return;
-                isRunning = true;
-                setTimeout(() => {
-                    fn && fn();
-                    isRunning = false;
-                }, delay);
-            };
-        },
         getVisiblePosition(data: any) {
             if (!data.length) return [];
             const result = data.map((item: any, index: number) => ({
                 index: index,
-                height: this.size,
-                top: index * Number(this.size),
-                bottom: (index + 1) * Number(this.size),
+                height: this.actualSize,
+                top: index * Number(this.actualSize),
+                bottom: (index + 1) * Number(this.actualSize),
             }));
             return result;
         },
         handleScroll() {
             const virtualListEl = this.$refs.virtualList as HTMLElement;
-            const scrollTop = virtualListEl.scrollTop;
+            // 滚动列表距离顶部的高度
+            const scrollTop = virtualListEl.scrollTop - this.otherHeight;
             if (this.type === TYPE.FIXED) {
-                this.startIndex = Math.floor(scrollTop / Number(this.size));
+                this.startIndex =
+                    scrollTop < 0 ? 0 : Math.floor(scrollTop / Number(this.actualSize));
                 this.endIndex = this.startIndex + Number(this.remain);
-                this.offset = (this.startIndex - this.prevCount) * Number(this.size);
+
+                this.offset = (this.startIndex - this.prevCount) * Number(this.actualSize);
             } else {
                 this.startIndex = this.getCurrentIndex(scrollTop, this.variableData) || 0;
                 this.endIndex = this.startIndex + Number(this.remain);
                 this.offset = this.variableData[this.startIndex - this.prevCount].top || 0;
             }
+            this.$nextTick(() => {
+                this.$emit('scroll', { scrollTop: scrollTop || 0 });
+                if (
+                    scrollTop + this.otherHeight + virtualListEl.clientHeight >=
+                    virtualListEl.scrollHeight - this.otherHeight - Number(this.preloadDistance)
+                ) {
+                    this.$emit('loadMore');
+                }
+            });
         },
         getCurrentIndex(value: number, positions: IList[]) {
             let start = 0;
@@ -238,8 +265,40 @@ export default defineComponent({
 <style lang="less" module>
 // https://vue-loader.vuejs.org/zh/guide/css-modules.html#%E7%94%A8%E6%B3%95
 .virtual-list {
-    overflow-y: auto;
     position: relative;
+    overflow-y: auto;
+    overflow: overlay;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+
+    &:hover::-webkit-scrollbar {
+        display: block;
+        width: 4px;
+
+        &-thumb {
+            height: 53px;
+            background: #d6d7d8;
+            border-radius: 29px;
+
+            &:hover {
+                background: #adafb2;
+            }
+        }
+
+        &-track {
+            display: none;
+        }
+
+        &-corner {
+            display: none;
+        }
+
+        &-button {
+            display: none;
+        }
+    }
 }
 .scroll-list {
     position: absolute;

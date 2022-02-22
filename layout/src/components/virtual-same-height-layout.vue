@@ -1,31 +1,35 @@
 <template>
-    <div :class="$style['same-height']">
-        <VirtualLayoutWF
-            v-if="renderData.length"
-            :width="clientWidth + 14"
-            :height="clientHeight"
-            :collection="renderData"
-            :cellSizeAndPositionGetter="cellSizeAndPositionGetter"
-        >
-            <template #cell="{ item }">
-                <!--
-                    @slot 自定义内容区域，抛出{ item, index, width, height }
-                -->
-                <slot
-                    :item="item"
-                    :index="item._index"
-                    :width="item._width"
-                    :height="item._height"
-                />
-            </template>
-        </VirtualLayoutWF>
-    </div>
+    <VirtualLayoutWF
+        v-if="renderData.length"
+        :width="clientWidth"
+        :height="clientHeight"
+        :collection="renderData"
+        :cellSizeAndPositionGetter="cellSizeAndPositionGetter"
+        :otherSlotHeight="otherSlotHeight"
+        :fixedHeight="fixedHeight"
+        @scroll="handleScroll"
+        @loadMore="loadMore"
+    >
+        <template #other>
+            <slot name="other" />
+        </template>
+        <template #cell="{ item }">
+            <!--
+                @slot 自定义内容区域，抛出{ item, index, width, height }
+            -->
+            <slot :item="item" :index="item._index" :width="item._width" :height="item._height" />
+        </template>
+        <template #bottom>
+            <Spin v-show="loading" />
+        </template>
+    </VirtualLayoutWF>
 </template>
 <script lang="ts">
 import { defineComponent, PropType } from 'vue-demi';
 import { Item, IRows, CollectionItem } from '../types';
 import { get } from '../../utils';
 import VirtualLayoutWF from './virtual-layout-wf.vue';
+import Spin from './spin.vue';
 
 interface IData {
     listData: IRows[];
@@ -36,8 +40,13 @@ export default defineComponent({
     name: 'VirtualSameHeight',
     components: {
         VirtualLayoutWF,
+        Spin,
     },
     props: {
+        loading: {
+            type: Boolean,
+            default: false,
+        },
         data: {
             type: Array as PropType<Item[]>,
             required: true,
@@ -78,7 +87,17 @@ export default defineComponent({
             type: Number,
             default: 2,
         },
+        otherSlotHeight: {
+            type: Number,
+            default: 0,
+        },
+        // 页面非滚动区域所占高度（搜索+筛选+padding)
+        fixedHeight: {
+            type: Number,
+            default: 200,
+        },
     },
+    emits: ['loadMore', 'scroll'],
     data(): IData {
         return {
             listData: [],
@@ -104,6 +123,10 @@ export default defineComponent({
             });
             return data.flat();
         },
+        calcWidth() {
+            const padding = 24;
+            return this.clientWidth - padding;
+        },
         gaps() {
             return typeof this.gap === 'number' ? [this.gap, this.gap] : this.gap;
         },
@@ -119,6 +142,9 @@ export default defineComponent({
             if (this.clientWidth === 0) return;
             this.init();
         },
+        extraHeight() {
+            this.init();
+        },
     },
     mounted() {
         this.$nextTick(() => {
@@ -128,6 +154,12 @@ export default defineComponent({
         });
     },
     methods: {
+        handleScroll(data: any) {
+            this.$emit('scroll', data);
+        },
+        loadMore() {
+            this.$emit('loadMore');
+        },
         getYPos(listData: IRows[], index: number) {
             if (index === 0 || listData.length === 0) return 0;
             let y = 0;
@@ -139,8 +171,7 @@ export default defineComponent({
         init() {
             this.lastRow = 0;
             this.listData = [];
-            const PADDING = 5;
-            this.initLayout(this.data, this.clientWidth - PADDING * 2);
+            this.initLayout(this.data, this.calcWidth);
         },
         initLayout(data: Item[], clientWidth: number) {
             const allData = this.listData;
@@ -243,7 +274,7 @@ export default defineComponent({
             const gapSum =
                 (lastItemWidth ? rowData.items.length : rowData.items.length - 1) * this.gaps[0];
             const itemWidth = rowData.itemTotalWidth + (lastItemWidth || 0);
-            const totalWidth = this.clientWidth - gapSum;
+            const totalWidth = this.calcWidth - gapSum;
             // 缩放比例
             return totalWidth / itemWidth;
         },
@@ -266,8 +297,3 @@ export default defineComponent({
     },
 });
 </script>
-<style lang="less" module>
-.same-height {
-    transition: all 0.15s;
-}
-</style>
