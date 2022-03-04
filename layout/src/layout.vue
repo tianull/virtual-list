@@ -1,23 +1,28 @@
 <template>
-    <div class="layout-container" :class="[layoutMode]">
-        <component
-            :is="layout"
-            v-bind="$attrs"
-            :clientWidth="clientWidth"
-            :clientHeight="clientHeight"
-            @scroll="handleScroll"
-            @loadMore="loadMore"
-        >
-            <template #default="{ item, index, width, height }">
-                <!--
-                    @slot 自定义内容区域，抛出{ item, index, width, height }
-                -->
-                <slot :item="item" :index="index" :width="width" :height="height" />
-            </template>
-            <template #other>
-                <slot name="other" />
-            </template>
-        </component>
+    <div class="layout-container">
+        <transition :name="animated ? 'component-fade' : 'normal'" mode="out-in">
+            <component
+                :is="layout"
+                v-bind="$attrs"
+                :clientWidth="clientWidth"
+                :clientHeight="clientHeight"
+                @scroll="handleScroll"
+                @loadMore="loadMore"
+            >
+                <template #other>
+                    <!--
+                        @slot 瀑布流顶部区域，可用于写标题或者其他一些内容等；
+                    -->
+                    <slot name="other" />
+                </template>
+                <template #default="{ item, index, width, height }">
+                    <!--
+                        @slot 自定义内容区域，抛出{ item, index, width, height }
+                    -->
+                    <slot :item="item" :index="index" :width="width" :height="height" />
+                </template>
+            </component>
+        </transition>
     </div>
 </template>
 <script lang="ts">
@@ -65,6 +70,20 @@ export default defineComponent({
             type: Boolean,
             default: false,
         },
+        /**
+         * 容器高度，不传时取document.body.clientHeight
+         */
+        containerHeight: {
+            type: Number,
+            default: 0,
+        },
+        /**
+         * 是否开启过渡动画
+         */
+        animated: {
+            type: Boolean,
+            default: false,
+        },
     },
     emits: ['loadMore', 'scroll'],
     data(): {
@@ -85,10 +104,15 @@ export default defineComponent({
             return this.virtual ? 'Virtual' + mode : mode;
         },
     },
+    watch: {
+        containerHeight(newVal) {
+            if (newVal > 0) this.clientHeight = newVal;
+        },
+    },
     mounted() {
         this.$nextTick(() => {
             this.clientWidth = this.$el.clientWidth;
-            this.clientHeight = document.body.clientHeight;
+            this.clientHeight = this.containerHeight || document.body.clientHeight;
             // 初始化observer
             this.initResizeObserver();
             window.addEventListener('resize', this.getClientHeight);
@@ -100,7 +124,7 @@ export default defineComponent({
     },
     methods: {
         getClientHeight() {
-            this.clientHeight = document.body.clientHeight;
+            this.clientHeight = this.containerHeight || document.body.clientHeight;
         },
         initResizeObserver() {
             this.observer = new ResizeObserver((mutations) => {
@@ -119,4 +143,14 @@ export default defineComponent({
     },
 });
 </script>
-<style lang="less" module></style>
+<style lang="less">
+.component-fade-enter-active,
+.component-fade-leave-active {
+    transition: opacity 0.3s ease-in-out;
+}
+
+.component-fade-enter-from,
+.component-fade-leave-to {
+    opacity: 0;
+}
+</style>
